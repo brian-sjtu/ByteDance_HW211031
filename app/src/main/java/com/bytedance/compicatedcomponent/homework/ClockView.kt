@@ -6,7 +6,6 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
-import java.util.*
 import kotlin.math.cos
 import kotlin.math.sin
 
@@ -27,9 +26,9 @@ class ClockView @JvmOverloads constructor(
         private const val CUSTOM_ALPHA = 140
         private const val FULL_ALPHA = 255
 
-        private const val POINTER_TYPE_SECOND = 2
-        private const val POINTER_TYPE_MINUTES = 1
-        private const val POINTER_TYPE_HOURS = 0
+        private const val POINTER_TYPE_SECOND : Byte = 3
+        private const val POINTER_TYPE_MINUTES : Byte = 2
+        private const val POINTER_TYPE_HOURS : Byte = 1
 
         private const val DEFAULT_PRIMARY_COLOR: Int = Color.WHITE
         private const val DEFAULT_SECONDARY_COLOR: Int = Color.LTGRAY
@@ -55,6 +54,12 @@ class ClockView @JvmOverloads constructor(
 
     private var degreesColor = 0
 
+    private var currentTime: Int = 0
+    private var nowHours: Byte = 0
+    private var nowMinutes: Byte = 0
+    private var nowSeconds: Byte = 0
+    private var touchPointerType: Byte = -1
+
     private val needlePaint: Paint
 
     init {
@@ -62,6 +67,7 @@ class ClockView @JvmOverloads constructor(
         needlePaint = Paint(Paint.ANTI_ALIAS_FLAG)
         needlePaint.style = Paint.Style.FILL_AND_STROKE
         needlePaint.strokeCap = Paint.Cap.ROUND
+        needlePaint.textAlign = Paint.Align.CENTER
     }
 
     override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
@@ -70,34 +76,35 @@ class ClockView @JvmOverloads constructor(
         val width = measuredWidth
         val height = measuredHeight
         val widthWithoutPadding = width - paddingLeft - paddingRight
-        val heightWithoutPadding = height - paddingTop - paddingBottom
+        val heightWithoutPadding = (height - paddingTop - paddingBottom) / 4 * 3
         size = if (widthWithoutPadding > heightWithoutPadding) {
             heightWithoutPadding
         } else {
             widthWithoutPadding
         }
-        setMeasuredDimension(size + paddingLeft + paddingRight, size + paddingTop + paddingBottom)
+        setMeasuredDimension(size + paddingLeft + paddingRight, size / 3 * 4 + paddingTop + paddingBottom)
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        resultWidth = if (height > width) width else height
-        val halfWidth = resultWidth / 2
-        centerX = halfWidth
-        centerY = halfWidth
-        radius = halfWidth
+        handler.postDelayed({ invalidate() },
+            if(touchPointerType == (-1).toByte()) System.currentTimeMillis() % 500 + 1 else 1000)
+        resultWidth = if (height / 4 * 3 > width) width else height / 4 * 3
+        centerX = width / 2
+        centerY = height / 2
+        radius = resultWidth / 2
         panelRadius = radius.toFloat()
-        hourPointerLength = panelRadius - 400
-        minutePointerLength = panelRadius - 250
-        secondPointerLength = panelRadius - 150
+        hourPointerLength = panelRadius * 0.4f
+        minutePointerLength = panelRadius * 0.55f
+        secondPointerLength = panelRadius * 0.7f
         drawDegrees(canvas)
         drawHoursValues(canvas)
+        currentTime = if (touchPointerType == (-1).toByte())
+            (System.currentTimeMillis() / 1000 % 43200).toInt()
+            else (currentTime + 1) % 43200
         drawNeedles(canvas)
 
         // todo 1: 每一秒刷新一次，让指针动起来
-        handler.postDelayed({
-            invalidate()
-        }, System.currentTimeMillis() % 1000 + 1)
     }
 
     private fun drawDegrees(canvas: Canvas) {
@@ -107,8 +114,8 @@ class ClockView @JvmOverloads constructor(
             strokeWidth = resultWidth * DEFAULT_DEGREE_STROKE_WIDTH
             color = degreesColor
         }
-        val rPadded: Int = centerX - (resultWidth * 0.01f).toInt()
-        val rEnd: Int = centerX - (resultWidth * 0.05f).toInt()
+        val rPadded: Int = (resultWidth * 0.49f).toInt()
+        val rEnd: Int = (resultWidth * 0.46f).toInt()
         var i = 0
         while (i < FULL_ANGLE) {
             if (i % RIGHT_ANGLE != 0 && i % 15 != 0) {
@@ -139,6 +146,15 @@ class ClockView @JvmOverloads constructor(
     private fun drawHoursValues(canvas: Canvas) {
         // Default Color:
         // - hoursValuesColor
+        needlePaint.color = DEFAULT_SECONDARY_COLOR
+        needlePaint.strokeWidth = resultWidth * DEFAULT_DEGREE_STROKE_WIDTH * 0.5f
+        needlePaint.textSize = 48f
+        canvas.drawText("12", centerX.toFloat(), centerY - resultWidth * 0.4f, needlePaint)
+        canvas.drawText("3", centerX + resultWidth * 0.42f, centerY + resultWidth * 0.02f, needlePaint)
+        canvas.drawText("6", centerX.toFloat(), centerY + resultWidth * 0.44f, needlePaint)
+        canvas.drawText("9", centerX - resultWidth * 0.42f, centerY + resultWidth * 0.02f, needlePaint)
+        needlePaint.textSize = 72f
+        canvas.drawText("reset", centerX.toFloat(), centerY + resultWidth * 0.58f, needlePaint)
     }
 
     /**
@@ -148,11 +164,12 @@ class ClockView @JvmOverloads constructor(
      * @param canvas
      */
     private fun drawNeedles(canvas: Canvas) {
-        val calendar: Calendar = Calendar.getInstance()
-        val now: Date = calendar.time
-        val nowHours: Int = now.hours
-        val nowMinutes: Int = now.minutes
-        val nowSeconds: Int = now.seconds
+        nowHours = (currentTime / 3600).toByte()
+        nowMinutes = (currentTime / 60 % 60).toByte()
+        nowSeconds = (currentTime % 60).toByte()
+        canvas.drawText(String.format("%02d : %02d : %02d", nowHours, nowMinutes, nowSeconds),
+            centerX.toFloat(), centerY - resultWidth * 0.52f, needlePaint)
+        needlePaint.strokeWidth = resultWidth * DEFAULT_DEGREE_STROKE_WIDTH
         // 画秒针
         drawPointer(canvas, POINTER_TYPE_SECOND, nowSeconds)
         // 画分针
@@ -160,15 +177,13 @@ class ClockView @JvmOverloads constructor(
         drawPointer(canvas, POINTER_TYPE_MINUTES, nowMinutes)
 
         // 画时针
-        val part = nowMinutes / 12
-        drawPointer(canvas, POINTER_TYPE_HOURS, 5 * nowHours + part)
+        drawPointer(canvas, POINTER_TYPE_HOURS, (5 * nowHours + nowMinutes / 12).toByte())
     }
 
 
-    private fun drawPointer(canvas: Canvas, pointerType: Int, value: Int) {
+    private fun drawPointer(canvas: Canvas, pointerType: Byte, value: Byte) {
         val degree: Float
         var pointerHeadXY = FloatArray(2)
-        needlePaint.strokeWidth = resultWidth * DEFAULT_DEGREE_STROKE_WIDTH
         when (pointerType) {
             POINTER_TYPE_HOURS -> {
                 degree = value * UNIT_DEGREE
